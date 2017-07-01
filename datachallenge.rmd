@@ -1,0 +1,421 @@
+---
+title: "Data Challenge"
+author: "Abhinav Pathak"
+date: '`r format(Sys.Date(), "%B %d, %Y")`'
+output: pdf_document
+---
+
+
+```{r, message=TRUE, warning=TRUE}
+suppressPackageStartupMessages({
+library(readr)
+library(sqldf)
+library(ggplot2)
+library(dplyr)
+library(Hmisc)
+library(tidyverse)
+library(lubridate)
+library(gridExtra)
+})
+```
+
+```{r, message=FALSE, warning=FALSE}
+signups <- read_csv("signups.csv")
+visits <- read_csv("visits.csv")
+```
+
+```{r}
+summary(signups)
+```
+
+```{r}
+summary(visits)
+```
+
+* From summary statistics, it is evident that there are no null values or missing values or extreme values
+
+# Question 1
+
+## Part a)
+
+```{r}
+ggplot(signups) + 
+  geom_bar(aes(x = factor(device))) + 
+  xlab(label = "Device") + 
+  ggtitle("Frequency distribution by device")
+```
+
+* It is evident that Device 1 has the highest number of signups followed by device 6. This is the device which users prefer over other devices
+
+## Part b)
+
+```{r}
+ggplot(signups) + 
+  geom_bar(aes(x = factor(auth_type))) + 
+  xlab(label = "Authorization type") + 
+  ggtitle("Frequency distribution by Authorization type")
+```
+
+* It is evident that users sign up through Authorization type C
+
+## Part c)
+
+```{r}
+ggplot(signups) + 
+  geom_bar(aes(x = factor(device), fill = auth_type)) + 
+  xlab(label = "Device") + 
+  ggtitle("Frequency distribution by Authorization type and Device")
+```
+
+* It is evident that users sign up through Authorization type C more, irrespective of the device type, because the proportion of C is higher in each of the Device case. It must mean that, users are very comfortable signing up through Authorization type C. Device 7 is an exception, where proportion for each of the 3 Authorization type seems equal.
+
+# Question 2
+
+### Create a table in long format with count of visitors at visit_week_number X SignUpDate 
+
+```{r}
+## Create an empty dataframe to store the final table
+df_final <- data.frame()
+
+## Run a for loop for each signup date, and keep appending it into the final dataframe
+for (date_var in 0:151 ) {
+date_week <- data.frame( week = rep(1:24, each= 7),
+                   date = seq(as.Date("2016-06-01")+date_var+1, by =1 , len = 24*7))
+## create a list user ids for 1 singup date
+uid_list <- signups %>% 
+  filter(signup_dt == as.Date("2016-06-01")+date_var ) %>%
+  select(uid)
+
+## a temporary table to store weekly visitor counts for each signup date
+visits_2 <- visits %>% 
+  left_join(date_week, by = c("dt" = "date")) %>%
+  filter(!is.na(week)) %>%
+  group_by(uid, week) %>%
+  summarise(visit_count = n()) %>%
+  filter(uid %in% (uid_list$uid)) %>%
+  group_by(week) %>%
+  summarise(count = n()) %>%
+  mutate(signup_dt = date_var)
+
+## Final table where the data from temporary table is appende after each loop
+df_final <- rbind(df_final, visits_2)
+}
+```
+
+### Transformation of rows to columns
+
+```{r}
+## a temporary dataframe which matches serial number to signup date
+date_df <- data.frame(date = seq(as.Date("2016-06-01"), as.Date("2016-10-30"), by=1),
+                         sno = seq(0, 151,by=1))
+## Adding the date column
+df_final <- df_final %>%  
+  left_join(date_df, by = c("signup_dt" = "sno"))
+
+## selecting only relevant columns for further analysis
+df_final <-  df_final %>%  
+    select(date, week, count)
+
+## Using spread function for transformation of week numbers to columns
+df_final_transformed <- df_final %>% spread(key = week, value = count)
+signup_count <- signups %>% 
+  group_by(signup_dt) %>%
+  summarise (signup_count = n())
+
+## Adding signup count for each signup date from signup_count table which was created earlier
+df_final_transformed_1 <- df_final_transformed %>%
+  inner_join(signup_count,by = c("date" = "signup_dt"))
+
+```
+
+### Convert count into %visits
+
+```{r}
+## Transmute function creates a new column and drops the old one
+df_final_transformed_2 <- df_final_transformed_1 %>%
+      transmute( signup_date = date,
+                 signup_count = signup_count,
+                 perc_visit_week1 =`1`/signup_count,
+                 perc_visit_week2= `2`/signup_count,
+                 perc_visit_week3 =`3`/signup_count,
+                 perc_visit_week4 =`4`/signup_count,
+                 perc_visit_week5 =`5`/signup_count,
+                 perc_visit_week6 =`6`/signup_count,
+                 perc_visit_week7 =`7`/signup_count,
+                 perc_visit_week8 =`8`/signup_count,
+                 perc_visit_week9 =`9`/signup_count,
+                 perc_visit_week10 =`10`/signup_count,
+                 perc_visit_week11 =`11`/signup_count,
+                 perc_visit_week12 =`12`/signup_count,
+                 perc_visit_week13 =`13`/signup_count,
+                 perc_visit_week14 =`14`/signup_count,
+                 perc_visit_week15 =`15`/signup_count,
+                 perc_visit_week16 =`16`/signup_count,
+                 perc_visit_week17 =`17`/signup_count,
+                 perc_visit_week18 =`18`/signup_count,
+                 perc_visit_week19 =`19`/signup_count,
+                 perc_visit_week20 =`20`/signup_count,
+                 perc_visit_week21 =`21`/signup_count,
+                 perc_visit_week22 =`22`/signup_count,
+                 perc_visit_week23 =`23`/signup_count,
+                 perc_visit_week24 =`24`/signup_count  )
+
+head(df_final_transformed_2)
+                            
+```
+
+### Generate Heat map
+
+```{r}
+
+## Convert to matrix
+matrix_final_transformed_2 <- df_final_transformed_2 %>% 
+  select(-signup_date,-signup_count) %>% 
+  as.matrix()
+
+heatmap(matrix_final_transformed_2,
+        scale = "row",
+        col = heat.colors(256),
+        main = "Chracteristics of user visits",
+        Rowv = NA,
+        Colv = NA)
+```
+
+* Approximately Week 17 onwards, it reaches a steady state (because the pallet of the whole column is red). This conclusion is from Heat map, where the whole column has turned red, and there is not much difference with other signup dates. This points to a very import chractareistic of user behavior in general. After a certain period of time, the users who really like the service become the regular users. Other users, either did not find the product/service useful or easy to use or cost efficient. The company should note that the users who are still using the service are the loyal ones and they are most likely going to be permanent ones and they awill have high lifetime value and they should be taken care of. On the other hand, the company should also focus on the user retention and find out why are customers stopping to use the product/service, what are the pain points and what can be done to make life easier for them, which leads to customer satisfaction and generates more revenue for the company in long term
+
+
+# Question 3
+
+### Create a table in long format with count of visitors at visit_week_number X SignUpDate X Auth_type
+
+```{r}
+## Two dataframes to store week number information for each of the two dates in question
+date_week_1 <- data.frame( week = rep(1:24, each= 7),
+                   date = seq(as.Date("2016-07-24")+1, by =1 , len = 24*7))
+
+date_week_2 <- data.frame( week = rep(1:24, each= 7),
+                   date = seq(as.Date("2016-08-18")+1, by =1 , len = 24*7))
+
+## create user column with July 24th as signup date
+uid_list_1 <- signups %>% 
+  filter(signup_dt == as.Date("2016-07-24"))%>%
+  select(uid, auth_type)
+
+## create user column with August 18th as signup date
+uid_list_2 <- signups %>% 
+  filter(signup_dt == as.Date("2016-08-18"))%>%
+  select(uid, auth_type)
+
+visits__table_1 <- visits %>%
+  left_join(date_week_1, by = c("dt" = "date")) %>%
+  filter(!is.na(week)) %>%
+  group_by(uid, week) %>%
+  summarise(visit_count = n()) %>%
+  filter(uid %in% (uid_list_1$uid)) %>%
+  left_join(signups, by= c("uid" = "uid")) %>%
+  group_by(week,auth_type) %>%
+  summarise(count = n()) %>%
+  mutate(signup_dt = as.Date("2016-07-24"))
+
+visits__table_2 <- visits %>%
+  left_join(date_week_2, by = c("dt" = "date")) %>%
+  filter(!is.na(week)) %>%
+  group_by(uid, week) %>%
+  summarise(visit_count = n()) %>%
+  filter(uid %in% (uid_list_2$uid)) %>%
+  left_join(signups, by= c("uid" = "uid")) %>%
+  group_by(week,auth_type) %>%
+  summarise(count = n()) %>%
+  mutate(signup_dt = as.Date("2016-08-18"))
+
+## Final table where the data from 2 temporary tables is combined
+df_final_q3 <- data.frame()
+df_final_q3 <- rbind(visits__table_1, visits__table_2)
+
+## Data transformation 
+
+df_final_q3_transformed_1 <- df_final_q3 %>% 
+  spread(key = week, value = count)  %>%
+  arrange(signup_dt)
+
+signup_authtype_count <- signups %>% 
+  group_by(signup_dt, auth_type) %>%
+  summarise (signup_count = n())
+
+df_final_q3_transformed_2 <- df_final_q3_transformed_1 %>%
+  inner_join(signup_authtype_count,by = c("signup_dt" = "signup_dt", "auth_type" ="auth_type"))
+
+```
+
+### Transformation of rows to columns
+
+```{r}
+## Transmute function creates a new column and drops the old one
+df_final_q3_transformed_3 <- df_final_q3_transformed_2 %>%
+      transmute( signup_date = signup_dt,
+                 auth_type = auth_type,
+                 signup_count = signup_count,
+                 perc_visit_week1 =`1`/signup_count,
+                 perc_visit_week2= `2`/signup_count,
+                 perc_visit_week3 =`3`/signup_count,
+                 perc_visit_week4 =`4`/signup_count,
+                 perc_visit_week5 =`5`/signup_count,
+                 perc_visit_week6 =`6`/signup_count,
+                 perc_visit_week7 =`7`/signup_count,
+                 perc_visit_week8 =`8`/signup_count,
+                 perc_visit_week9 =`9`/signup_count,
+                 perc_visit_week10 =`10`/signup_count,
+                 perc_visit_week11 =`11`/signup_count,
+                 perc_visit_week12 =`12`/signup_count,
+                 perc_visit_week13 =`13`/signup_count,
+                 perc_visit_week14 =`14`/signup_count,
+                 perc_visit_week15 =`15`/signup_count,
+                 perc_visit_week16 =`16`/signup_count,
+                 perc_visit_week17 =`17`/signup_count,
+                 perc_visit_week18 =`18`/signup_count,
+                 perc_visit_week19 =`19`/signup_count,
+                 perc_visit_week20 =`20`/signup_count,
+                 perc_visit_week21 =`21`/signup_count,
+                 perc_visit_week22 =`22`/signup_count,
+                 perc_visit_week23 =`23`/signup_count,
+                 perc_visit_week24 =`24`/signup_count  )
+```
+
+### Let us plot and see if there is a difference between authorization type
+
+```{r}
+
+temp <- df_final_q3_transformed_3 %>% 
+  gather(perc_visit_week1:perc_visit_week24, key = "week", value = "perc_visits") %>%
+  separate(week, into = c("a","week"), sep = "k", convert = FALSE) %>%
+  mutate(week = as.numeric(week)) %>%
+  select(-a) %>%
+  arrange(week)
+
+gg1 <- ggplot(temp %>% filter(signup_date == "2016-07-24")) +
+  geom_line(aes(x= week, y = perc_visits, group = auth_type, color = auth_type)) +
+  ggtitle("comparing retention between authorization type (July 24th, 2016)") 
+
+
+gg2 <- ggplot(temp %>% filter(signup_date == "2016-08-18")) +
+  geom_line(aes(x= week, y = perc_visits, group = auth_type, color = auth_type)) +
+  ggtitle("comparing retention between authorization type (August 18th, 2016)")
+
+grid.arrange(gg1, gg2)
+
+``` 
+
+* Retention does vary by authorization type. It is clear from the 1st plot (users who signed up on July 24th) that retention of authorization type "c" is higher in most of the weeks compared to Authorization type A and B. This means that, customers with Authoriation type A and B are facing some issues. For eg, it could be taking time to authorize everytime they login. 
+* Whereas, (users who signed up on August 18th), there retention is higher with authorization type B, between week 5 to 14 particularly. 
+
+> Question 4
+
+```{r}
+
+date_seq <- seq(as.Date("2016-06-01"), as.Date("2016-10-30"), by=1)
+df_final_q4 <- data.frame()
+
+for (date_var in 0:151 ) {
+date_week <- data.frame( week = rep(1:24, each= 7),
+                   date = seq(as.Date("2016-06-01")+date_var+1, by =1 , len = 24*7))
+
+## Creating a column of user ids for a particular date
+uid_list <- signups %>% 
+  filter(signup_dt == as.Date("2016-06-01") + date_var) %>%
+  select(uid) 
+
+## a temporary table to store cumulative first time visitor counts for a signup date
+temp_table_4 <- visits %>% 
+  left_join(date_week, by = c("dt" = "date")) %>%
+  filter(!is.na(week)) %>%
+  group_by(uid, week) %>%
+  summarise(visit_count = n()) %>%
+  ungroup() %>%
+  filter(uid %in% (uid_list$uid)) %>%
+  arrange(week) %>%
+  group_by(uid) %>%
+  mutate(var_temp = ifelse(row_number()==1,1,0)) %>%
+  ungroup() %>%
+  group_by(week) %>%
+  summarise(total_count = sum(var_temp)) %>%
+  ungroup() %>%
+  mutate(signup_dt_no = date_var) %>%
+  group_by(signup_dt_no) %>%
+  mutate(cum_week_count = cumsum(total_count)) %>%
+  ungroup()
+  
+
+df_final_q4 <- rbind(df_final_q4, data.frame(temp_table_4))
+}
+```
+
+
+### Transformation from rows to columns
+
+```{r}
+date_df <- data.frame(date = seq(as.Date("2016-06-01"), as.Date("2016-10-30"), by=1),
+                         sno = seq(0, 151,by=1))
+
+## Adding date columns using join operation
+df_final_q4_1 <- df_final_q4 %>%  
+  left_join(date_df, by = c("signup_dt_no" = "sno")) %>%  
+    select(date, week, cum_week_count) 
+
+## Using spread function to transform week to columns
+df_final_q4_transformed <- df_final_q4_1 %>% spread(key = week, value = cum_week_count)
+
+## Signup counts for all signup dates
+signup_count <- signups %>% 
+  group_by(signup_dt) %>%
+  summarise (signup_count = n())
+
+df_final_q4_transformed_1 <- df_final_q4_transformed %>%
+  inner_join(signup_count,by = c("date" = "signup_dt"))
+
+```
+
+### Convert count into %visits
+
+```{r}
+## Transmute function creates a new column and drops the old one
+df_final_q4_transformed_2 <- df_final_q4_transformed_1 %>%
+      transmute( signup_date = date,
+                 signup_count = signup_count,
+                 perc_visit_within_week1 =`1`/signup_count,
+                 perc_visit_within_week2= `2`/signup_count,
+                 perc_visit_within_week3 =`3`/signup_count,
+                 perc_visit_within_week4 =`4`/signup_count,
+                 perc_visit_within_week5 =`5`/signup_count,
+                 perc_visit_within_week6 =`6`/signup_count,
+                 perc_visit_within_week7 =`7`/signup_count,
+                 perc_visit_within_week8 =`8`/signup_count,
+                 perc_visit_within_week9 =`9`/signup_count,
+                 perc_visit_within_week10 =`10`/signup_count,
+                 perc_visit_within_week11 =`11`/signup_count,
+                 perc_visit_within_week12 =`12`/signup_count,
+                 perc_visit_within_week13 =`13`/signup_count,
+                 perc_visit_within_week14 =`14`/signup_count,
+                 perc_visit_within_week15 =`15`/signup_count,
+                 perc_visit_within_week16 =`16`/signup_count,
+                 perc_visit_within_week17 =`17`/signup_count,
+                 perc_visit_within_week18 =`18`/signup_count,
+                 perc_visit_within_week19 =`19`/signup_count,
+                 perc_visit_within_week20 =`20`/signup_count,
+                 perc_visit_within_week21 =`21`/signup_count,
+                 perc_visit_within_week22 =`22`/signup_count,
+                 perc_visit_within_week23 =`23`/signup_count,
+                 perc_visit_within_week24 =`24`/signup_count  )
+
+head(df_final_q4_transformed_2)
+```
+
+### Proportion of users on average that do not come back
+
+```{r}
+1- mean(df_final_q4_transformed_2$perc_visit_within_week24)
+```
+
+* 13.4 % of the users never come back after signing up (within first 24 weeks)
+
+
+
